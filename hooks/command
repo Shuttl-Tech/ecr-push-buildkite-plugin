@@ -67,7 +67,7 @@ push_tags() {
 if [[ -n ${BUILDKITE_PLUGIN_ECR_PUSH_REGION:-} ]]; then
   region="${BUILDKITE_PLUGIN_ECR_PUSH_REGION}"
 elif [[ -n ${AWS_DEFAULT_REGION:-} ]]; then
-  region="${AWS_DEFAULT_REGION}}"
+  region="${AWS_DEFAULT_REGION}"
 else
   region="$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone | cut -d ' ' -f 2 | sed -e 's/.$//')"
 fi
