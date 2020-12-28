@@ -1,0 +1,104 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+if [[ -z ${BUILDKITE_PLUGIN_ECR_PUSH_REPOSITORY:-} ]]; then
+  echo "'repository' property is required"
+  exit 1
+fi
+
+get_ecr_url() {
+  local repository_name="${1}"
+  local registry_id="${2}"
+  local region="${3}"
+
+  aws ecr describe-repositories \
+    --region "${region}" \
+    --repository-names "${repository_name}" \
+    --registry-id "${registry_id}" \
+    --output text \
+    --query 'repositories[0].repositoryUri'
+}
+
+read_tags() {
+  local property="${1}"
+
+  if read_list_property "${property}"; then
+    tags+=("${result[@]}")
+  fi
+}
+
+# read a plugin property of type [array, string] into a Bash array. Buildkite
+# exposes a string value at BUILDKITE_PLUGIN_{NAME}_{KEY}, and array values at
+# BUILDKITE_PLUGIN_{NAME}_{KEY}_{IDX}.
+read_list_property() {
+  local prefix="BUILDKITE_PLUGIN_ECR_PUSH_${1}"
+  local property="${prefix}_0"
+
+  result=()
+
+  if [[ -n ${!property:-} ]]; then
+    local i=0
+    local property="${prefix}_${i}"
+
+    while [[ -n ${!property:-} ]]; do
+      result+=("${!property}")
+
+      i=$((i + 1))
+      property="${prefix}_${i}"
+    done
+  elif [[ -n ${!prefix:-} ]]; then
+    result+=("${!prefix}")
+  fi
+
+  [[ ${#result[@]} -gt 0 ]] || return 1
+}
+
+push_tags() {
+  local tags=("${@}")
+
+  for tag in "${tags[@]}"; do
+    echo "--- Pushing Tag: '${tag}'"
+    docker tag "${image}" "${image}:${tag}"
+    docker push "${image}:${tag}"
+  done
+}
+
+if [[ -n ${BUILDKITE_PLUGIN_ECR_PUSH_REGION:-} ]]; then
+  region="${BUILDKITE_PLUGIN_ECR_PUSH_REGION}"
+elif [[ -n ${AWS_DEFAULT_REGION:-} ]]; then
+  region="${AWS_DEFAULT_REGION}}"
+else
+  region="$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone | cut -d ' ' -f 2 | sed -e 's/.$//')"
+fi
+
+account_id="$(aws sts get-caller-identity --output text | cut -f1)"
+
+dockerfile="${BUILDKITE_PLUGIN_ECR_PUSH_DOCKERFILE:-Dockerfile}"
+build_context="${BUILDKITE_PLUGIN_ECR_PUSH_CONTEXT:-.}"
+
+image="$(get_ecr_url "${BUILDKITE_PLUGIN_ECR_PUSH_REPOSITORY}" "${account_id}" "${region}")"
+
+caches_from=()
+tags=("${BUILDKITE_COMMIT}" "${BUILDKITE_COMMIT:0:8}")
+
+read_tags 'TAGS'
+
+if [[ -n ${BUILDKITE_PLUGIN_ECR_PUSH_CACHE_FROM_TAG:-} ]]; then
+  echo "--- Warming up the image cache"
+  docker pull "${image}:${BUILDKITE_PLUGIN_ECR_PUSH_CACHE_FROM_TAG}"
+  caches_from+=("--cache-from" "${image}:${BUILDKITE_PLUGIN_ECR_PUSH_CACHE_FROM_TAG}")
+fi
+
+
+echo '--- Building Docker image'
+echo "Cache from:" ${caches_from[@]+"${caches_from[@]}"}
+echo "Dockerfile: ${dockerfile}"
+echo "Build context: ${build_context}"
+docker build \
+  --file "${dockerfile}" \
+  --tag "${image}" \
+  ${caches_from[@]+"${caches_from[@]}"} \
+  "${build_context}"
+
+push_tags "${tags[@]}"

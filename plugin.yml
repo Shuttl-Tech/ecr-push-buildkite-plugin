@@ -1,0 +1,20 @@
+name: ECR Push
+description: Build, tag, and push Docker images to Amazon ECR
+author: https://github.com/Shuttl-Tech
+requirements:
+  - docker
+configuration:
+  properties:
+    context:
+      type: string
+    cache_from_tag:
+      type: string
+    dockerfile:
+      type: string
+    repository:
+      type: string
+    region:
+      type: string
+    tags:
+      type: [array, string]
+  required: ['repository']
