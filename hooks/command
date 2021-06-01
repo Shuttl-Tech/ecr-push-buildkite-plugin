@@ -7,12 +7,28 @@ if [[ -z ${BUILDKITE_PLUGIN_ECR_PUSH_REPOSITORY:-} ]]; then
   exit 1
 fi
 
+if [[ -n ${BUILDKITE_PLUGIN_ECR_PUSH_REGION:-} ]]; then
+  region="${BUILDKITE_PLUGIN_ECR_PUSH_REGION}"
+elif [[ -n ${AWS_DEFAULT_REGION:-} ]]; then
+  region="${AWS_DEFAULT_REGION}"
+else
+  region="$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone | cut -d ' ' -f 2 | sed -e 's/.$//')"
+fi
+
+aws_ecr_cmd="aws ecr"
+
+if [[ -n ${BUILDKITE_PLUGIN_ECR_PUSH_PUBLIC_ORG_NAME:-} ]]; then
+  region="us-east-1"
+  aws_ecr_cmd="aws ecr-public"
+
+  aws ecr-public get-login-password --region "${region}" | docker login --username AWS --password-stdin "public.ecr.aws/${BUILDKITE_PLUGIN_ECR_PUSH_PUBLIC_ORG_NAME}"
+fi
+
 get_ecr_url() {
   local repository_name="${1}"
   local registry_id="${2}"
-  local region="${3}"
 
-  aws ecr describe-repositories \
+  ${aws_ecr_cmd} describe-repositories \
     --region "${region}" \
     --repository-names "${repository_name}" \
     --registry-id "${registry_id}" \
@@ -64,20 +80,12 @@ push_tags() {
   done
 }
 
-if [[ -n ${BUILDKITE_PLUGIN_ECR_PUSH_REGION:-} ]]; then
-  region="${BUILDKITE_PLUGIN_ECR_PUSH_REGION}"
-elif [[ -n ${AWS_DEFAULT_REGION:-} ]]; then
-  region="${AWS_DEFAULT_REGION}"
-else
-  region="$(curl -s http://169.254.169.254/latest/meta-data/placement/availability-zone | cut -d ' ' -f 2 | sed -e 's/.$//')"
-fi
-
 account_id="$(aws sts get-caller-identity --output text | cut -f1)"
 
 dockerfile="${BUILDKITE_PLUGIN_ECR_PUSH_DOCKERFILE:-Dockerfile}"
 build_context="${BUILDKITE_PLUGIN_ECR_PUSH_CONTEXT:-.}"
 
-image="$(get_ecr_url "${BUILDKITE_PLUGIN_ECR_PUSH_REPOSITORY}" "${account_id}" "${region}")"
+image="$(get_ecr_url "${BUILDKITE_PLUGIN_ECR_PUSH_REPOSITORY}" "${account_id}")"
 
 caches_from=()
 tags=("${BUILDKITE_COMMIT}" "${BUILDKITE_COMMIT:0:8}")

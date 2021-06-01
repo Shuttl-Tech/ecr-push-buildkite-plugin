@@ -17,4 +17,6 @@ configuration:
       type: string
     tags:
       type: [array, string]
+    public_org_name:
+      type: string
   required: ['repository']

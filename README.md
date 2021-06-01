@@ -10,19 +10,19 @@ and push Docker images to Amazon ECR.
 The following pipeline builds the default `./Dockerfile` and pushes it to a
 pre-existing ECR repository `my-repo`:
 
-```yaml
+```yml
 steps:
   - plugins:
-      - Shuttl-Tech/ecr-push#latest:
+      - Shuttl-Tech/ecr-push#v1.0.0:
           repository: my-repo
 ```
 
 An alternate Dockerfile may be specified:
 
-```yaml
+```yml
 steps:
   - plugins:
-      - Shuttl-Tech/ecr-push#latest:
+      - Shuttl-Tech/ecr-push#v1.0.0:
           dockerfile: path/to/final.Dockerfile
           repository: my-repo
 ```
@@ -61,6 +61,10 @@ are supported, either with an explicit value, or without one to propagate an env
   Tags to push on all builds.
 
   Default: `$BUILDKITE_COMMIT` and first 8 characters of the commit hash.
+
+- `public_org_name` (optional, string)
+
+  Name of the public ECR organization if the image is to be pushed to a public ECR repository.
 
 ## License
 
